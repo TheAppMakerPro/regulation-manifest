@@ -1,7 +1,21 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+
+console.log('=== Starting Regulation Manifest ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('DATABASE_URL:', process.env.DATABASE_URL);
+console.log('CWD:', process.cwd());
+
+// Check if database exists
+const dbPath = './prisma/data/tanker-calendar.db';
+console.log('DB exists:', fs.existsSync(dbPath));
+console.log('Prisma dir exists:', fs.existsSync('./prisma'));
+console.log('Prisma data dir exists:', fs.existsSync('./prisma/data'));
+
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 import vesselRoutes from './routes/vessels.js';
@@ -10,6 +24,8 @@ import seatimeRoutes from './routes/seatime.js';
 import reportRoutes from './routes/reports.js';
 import regulationsRoutes from './routes/regulations.js';
 import { errorHandler } from './middleware/errorHandler.js';
+
+console.log('All routes imported successfully');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
