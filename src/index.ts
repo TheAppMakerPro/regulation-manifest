@@ -5,97 +5,115 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 console.log('=== Starting Regulation Manifest ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('PORT:', process.env.PORT);
-console.log('DATABASE_URL:', process.env.DATABASE_URL);
 console.log('CWD:', process.cwd());
 
+// Use absolute path for database
+const projectRoot = process.cwd();
+const dataDir = path.join(projectRoot, 'prisma', 'data');
+const dbPath = path.join(dataDir, 'tanker-calendar.db');
+
+console.log('Project root:', projectRoot);
+console.log('Database path:', dbPath);
+
 // Ensure database directory exists
-const dataDir = './prisma/data';
 if (!fs.existsSync(dataDir)) {
   console.log('Creating database directory...');
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// Check if database exists and list directory contents
-const dbPath = './prisma/data/tanker-calendar.db';
+console.log('prisma dir contents:', fs.readdirSync(path.join(projectRoot, 'prisma')));
+console.log('prisma/data contents:', fs.readdirSync(dataDir));
 console.log('DB exists:', fs.existsSync(dbPath));
-console.log('prisma/data contents:', fs.existsSync(dataDir) ? fs.readdirSync(dataDir) : 'dir not found');
-console.log('prisma contents:', fs.existsSync('./prisma') ? fs.readdirSync('./prisma') : 'dir not found');
 
-// Run migrations if database doesn't exist
-if (!fs.existsSync(dbPath)) {
-  console.log('Database not found, running migrations...');
+if (fs.existsSync(dbPath)) {
+  const stats = fs.statSync(dbPath);
+  console.log('DB file size:', stats.size, 'bytes');
+}
+
+// Set DATABASE_URL with absolute path BEFORE importing anything that uses Prisma
+const absoluteDbUrl = `file:${dbPath}`;
+process.env.DATABASE_URL = absoluteDbUrl;
+console.log('DATABASE_URL set to:', absoluteDbUrl);
+
+// Run migrations if database doesn't exist or is empty
+if (!fs.existsSync(dbPath) || fs.statSync(dbPath).size === 0) {
+  console.log('Database not found or empty, running migrations and seed...');
   try {
     execSync('npx prisma migrate deploy', { stdio: 'inherit' });
-    console.log('Migrations completed');
+    execSync('npx tsx prisma/seed.ts', { stdio: 'inherit' });
+    console.log('Migrations and seed completed');
   } catch (error) {
-    console.error('Migration failed:', error);
+    console.error('Migration/seed failed:', error);
   }
 }
 
-import authRoutes from './routes/auth.js';
-import userRoutes from './routes/user.js';
-import vesselRoutes from './routes/vessels.js';
-import companyRoutes from './routes/companies.js';
-import seatimeRoutes from './routes/seatime.js';
-import reportRoutes from './routes/reports.js';
-import regulationsRoutes from './routes/regulations.js';
-import { errorHandler } from './middleware/errorHandler.js';
+// Now dynamically import routes AFTER database is configured
+async function startServer() {
+  const { default: authRoutes } = await import('./routes/auth.js');
+  const { default: userRoutes } = await import('./routes/user.js');
+  const { default: vesselRoutes } = await import('./routes/vessels.js');
+  const { default: companyRoutes } = await import('./routes/companies.js');
+  const { default: seatimeRoutes } = await import('./routes/seatime.js');
+  const { default: reportRoutes } = await import('./routes/reports.js');
+  const { default: regulationsRoutes } = await import('./routes/regulations.js');
+  const { errorHandler } = await import('./middleware/errorHandler.js');
 
-console.log('All routes imported successfully');
+  console.log('All routes imported successfully');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+  const app = express();
+  const PORT = process.env.PORT || 3001;
 
-const app = express();
-const PORT = process.env.PORT || 3001;
+  // Middleware
+  app.use(cors({
+    origin: process.env.NODE_ENV === 'production'
+      ? true
+      : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3001'],
+    credentials: true,
+  }));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
-// Middleware
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? true  // Allow all origins in production (same-origin requests from PWA)
-    : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3001'],
-  credentials: true,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+  // Static files for uploads
+  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Static files for uploads
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+  // API Routes
+  app.use('/api/auth', authRoutes);
+  app.use('/api/user', userRoutes);
+  app.use('/api/vessels', vesselRoutes);
+  app.use('/api/companies', companyRoutes);
+  app.use('/api/seatime', seatimeRoutes);
+  app.use('/api/reports', reportRoutes);
+  app.use('/api/regulations', regulationsRoutes);
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/vessels', vesselRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/seatime', seatimeRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/regulations', regulationsRoutes);
+  // Health check
+  app.get('/api/health', (_, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
 
-// Health check
-app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  // Serve static client files
+  const clientPath = path.join(__dirname, '../client');
+  app.use(express.static(clientPath));
 
-// Serve static client files
-const clientPath = path.join(__dirname, '../client');
-app.use(express.static(clientPath));
+  // SPA fallback - serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(clientPath, 'index.html'));
+    }
+  });
 
-// SPA fallback - serve index.html for all non-API routes
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(clientPath, 'index.html'));
-  }
-});
+  // Error handler
+  app.use(errorHandler);
 
-// Error handler
-app.use(errorHandler);
+  app.listen(PORT, () => {
+    console.log(`Regulation Manifest running on http://localhost:${PORT}`);
+    console.log(`Serving PWA client from /client`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`Regulation Manifest running on http://localhost:${PORT}`);
-  console.log(`Serving PWA client from /client`);
-});
-
-export default app;
+startServer().catch(console.error);
