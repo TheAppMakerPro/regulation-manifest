@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 console.log('=== Starting Regulation Manifest ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
@@ -10,11 +11,29 @@ console.log('PORT:', process.env.PORT);
 console.log('DATABASE_URL:', process.env.DATABASE_URL);
 console.log('CWD:', process.cwd());
 
-// Check if database exists
+// Ensure database directory exists
+const dataDir = './prisma/data';
+if (!fs.existsSync(dataDir)) {
+  console.log('Creating database directory...');
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+// Check if database exists and list directory contents
 const dbPath = './prisma/data/tanker-calendar.db';
 console.log('DB exists:', fs.existsSync(dbPath));
-console.log('Prisma dir exists:', fs.existsSync('./prisma'));
-console.log('Prisma data dir exists:', fs.existsSync('./prisma/data'));
+console.log('prisma/data contents:', fs.existsSync(dataDir) ? fs.readdirSync(dataDir) : 'dir not found');
+console.log('prisma contents:', fs.existsSync('./prisma') ? fs.readdirSync('./prisma') : 'dir not found');
+
+// Run migrations if database doesn't exist
+if (!fs.existsSync(dbPath)) {
+  console.log('Database not found, running migrations...');
+  try {
+    execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+    console.log('Migrations completed');
+  } catch (error) {
+    console.error('Migration failed:', error);
+  }
+}
 
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
