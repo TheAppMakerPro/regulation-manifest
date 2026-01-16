@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/ship.svg" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="Regulation Manifest - Maritime Regulatory Compliance & Seatime Tracker" />
+    <meta name="theme-color" content="#0967d2" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RegManifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Regulation Manifest" />
+    <meta name="msapplication-TileColor" content="#0967d2" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <title>Regulation Manifest - Maritime Compliance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      /* Initial loading screen - shown before React mounts */
+      #initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #0c1929 0%, #132f4c 50%, #0a4a7c 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.3s ease-out;
+      }
+      #initial-loader.fade-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #initial-loader img {
+        width: 96px;
+        height: 96px;
+        border-radius: 16px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      }
+      /* Prevent flash of unstyled content */
+      #root:empty + script ~ * {
+        display: none;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-DjFeTJzR.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-BKtPx8W1.js">
+    <link rel="modulepreload" crossorigin href="/assets/charts-BWHQq7ne.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CUu33ADb.css">
+  <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
+  <body>
+    <!-- Initial loading screen -->
+    <div id="initial-loader">
+      <img src="/app-icon.png" alt="Loading..." />
+    </div>
+    <div id="root"></div>
+  </body>
+</html>

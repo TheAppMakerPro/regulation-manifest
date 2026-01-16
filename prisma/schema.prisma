@@ -1,0 +1,339 @@
+// Tanker Track - Seatime Tracker Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String          @id @default(uuid())
+  email               String          @unique
+  passwordHash        String
+  fullName            String
+  timezone            String          @default("UTC")
+
+  // ============================================
+  // STCW/MLC Required Seafarer Identification
+  // Per STCW Reg I/2, MLC Reg 1.2
+  // ============================================
+  cdcNumber           String?         // Continuous Discharge Certificate / Seafarer ID
+  licenseNumber       String?         // Certificate of Competency number
+  cocGrade            String?         // CoC Grade (e.g., "Master Unlimited", "Chief Mate <3000GT")
+  cocIssueDate        DateTime?       // CoC Issue Date
+  cocExpiryDate       DateTime?       // CoC Expiry Date (5-year validity)
+  issuingAuthority    String?         // Flag State / Maritime Authority name
+  nationality         String?         // Nationality (required for flag state submissions)
+  dateOfBirth         DateTime?       // DOB (required for official records)
+  placeOfBirth        String?         // Place of Birth
+
+  // Medical Certificate (STCW Reg I/9, MLC Reg 1.2)
+  medicalCertNumber   String?         // ENG1/Medical Certificate number
+  medicalCertIssue    DateTime?       // Medical certificate issue date
+  medicalCertExpiry   DateTime?       // Medical certificate expiry (2 years max)
+
+  // STCW Endorsements
+  stcwEndorsements    String?         // JSON array of endorsements (BST, PSCRB, AFF, etc.)
+  tankerEndorsement   String?         // Oil/Chemical/Gas tanker endorsement type
+
+  // Renewal cycle settings
+  renewalCycleStart   DateTime?
+  targetSeaDays       Int             @default(365) // Target days for 5-year cycle
+  targetSeaHours      Int             @default(8760) // Target hours (365 * 24)
+
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  // Relations
+  vessels             Vessel[]
+  companies           Company[]
+  seatimeEntries      SeatimeEntry[]
+  auditLogs           AuditLog[]
+}
+
+model Vessel {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+
+  // ============================================
+  // SOLAS/Flag State Vessel Identification
+  // Per SOLAS V/Reg 19, XI-1/Reg 3
+  // ============================================
+  imoNumber       String?   // IMO Ship Identification Number (7 digits)
+  officialNumber  String?   // National Official/Registry Number
+  callSign        String?   // Radio Call Sign
+  mmsi            String?   // Maritime Mobile Service Identity (9 digits)
+  portOfRegistry  String?   // Port of Registry
+
+  // Vessel Classification
+  vesselType      String?   // Type (Oil Tanker, Chemical Tanker, LNG Carrier, etc.)
+  flag            String?   // Flag State (country)
+  classificationSociety String? // Classification society (DNV, Lloyd's, ABS, etc.)
+
+  // Tonnage & Dimensions (SOLAS, Load Lines Convention)
+  grossTonnage    Int?      // Gross Tonnage (GT)
+  netTonnage      Int?      // Net Tonnage (NT) - for port dues calculations
+  deadweight      Int?      // Deadweight Tonnage (DWT)
+  lengthOverall   Float?    // Length Overall (LOA) in meters
+
+  // Propulsion (STCW engine department requirements)
+  enginePower     Int?      // Main engine power in kW (for CoC limitations)
+  engineType      String?   // Engine type (2-stroke, 4-stroke, steam, etc.)
+  propulsionType  String?   // Propulsion type (single screw, twin screw, etc.)
+
+  // Additional Details
+  yearBuilt       Int?      // Year of build (for STCW grandfathering)
+  shipyard        String?   // Building shipyard
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seatimeEntries SeatimeEntry[]
+
+  @@unique([userId, name])
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+
+  // ============================================
+  // MLC/ISM Code Company Identification
+  // Per MLC Reg 2.1, ISM Code Element 3-4
+  // ============================================
+  address           String?   // Full address
+  city              String?   // City
+  country           String?   // Country
+  postalCode        String?   // Postal/ZIP code
+
+  // Company Registration
+  registrationNumber String?  // Company registration number
+  docNumber         String?   // Document of Compliance (DOC) number
+  docIssueDate      DateTime? // DOC issue date
+  docExpiryDate     DateTime? // DOC expiry date
+
+  // ISM Code - Designated Person Ashore (DPA)
+  dpaName           String?   // DPA Name (ISM Code Element 4)
+  dpaEmail          String?   // DPA Email
+  dpaPhone          String?   // DPA Phone
+
+  // Contact Information
+  contactPerson     String?   // HR/Crewing contact name
+  phone             String?   // Main phone number
+  fax               String?   // Fax number (still required on some forms)
+  email             String?   // Company email
+
+  // MLC Certification
+  mlcCertified      Boolean   @default(false) // MLC compliant
+  mlcCertExpiry     DateTime? // MLC certificate expiry
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seatimeEntries SeatimeEntry[]
+
+  @@unique([userId, name])
+}
+
+model SeatimeEntry {
+  id                    String    @id @default(uuid())
+  userId                String
+  vesselId              String
+  companyId             String
+
+  // ============================================
+  // STCW Sea Service Record Fields
+  // Per STCW Reg I/2 - Recognition of Certificates
+  // ============================================
+
+  // Position and duty information
+  rank                  String    // Position/Rank held (per STCW Table)
+  capacity              String?   // Capacity served (e.g., "Officer in Charge of Nav Watch")
+  department            String?   // Deck, Engine, or Dual
+  watchSchedule         String?   // Watch schedule (e.g., "4 on / 8 off")
+
+  // Time tracking
+  startAt               DateTime  // Sign-on date
+  endAt                 DateTime  // Sign-off date
+
+  // Computed durations (stored for performance)
+  computedDurationHours Float
+  computedDurationDays  Float
+
+  // ============================================
+  // Nature of Service (Flag State Required)
+  // ============================================
+  voyageType            String?   // International, Coastal, Domestic, Near-Coastal
+  tradingArea           String?   // Trading area/waters (e.g., "Worldwide", "North Sea", "US Gulf")
+  cargoType             String?   // Cargo type (Oil, Chemicals, LNG, LPG, Dry Bulk, Container)
+
+  // Route information
+  departurePort         String?
+  arrivalPort           String?
+  route                 String?   // General route description
+
+  // ============================================
+  // Service Letter/Certificate Reference
+  // Required for flag state verification
+  // ============================================
+  serviceLetterNumber   String?   // Service letter/certificate reference number
+  dischargeBookPage     String?   // CDC/Discharge book page number
+  signoffReason         String?   // Reason for sign-off (Contract Complete, Mutual Consent, etc.)
+
+  // ============================================
+  // Verification (Company/Master Authorization)
+  // ============================================
+  isVerified            Boolean   @default(false)
+  verifiedBy            String?   // Name of verifier (Master or Company Representative)
+  verifierTitle         String?   // Title of verifier (Master, DPA, Crewing Manager)
+  verifierEmail         String?   // Verifier contact for authority follow-up
+  verifiedAt            DateTime?
+  companyStamp          Boolean   @default(false) // Company stamp/seal applied
+
+  // Notes
+  notes                 String?
+
+  // Overlap handling
+  hasOverlapApproval    Boolean   @default(false)
+  overlapReason         String?
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vessel      Vessel       @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  attachments Attachment[]
+  auditLogs   AuditLog[]
+}
+
+model Attachment {
+  id            String   @id @default(uuid())
+  entryId       String
+  filename      String
+  originalName  String
+  mimeType      String
+  storagePath   String
+  fileSize      Int
+
+  createdAt     DateTime @default(now())
+
+  // Relations
+  entry SeatimeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  entryId   String?
+  action    String   // CREATE, UPDATE, DELETE, VERIFY, EXPORT
+  details   String?  // JSON string with change details
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entry SeatimeEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+}
+
+// ============================================
+// Maritime Regulations Reference System
+// ============================================
+
+model RegulationCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  icon        String?
+  sortOrder   Int      @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  regulations Regulation[]
+}
+
+model Convention {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  name          String
+  description   String?
+  adoptionDate  DateTime?
+  effectiveDate DateTime?
+  imoLink       String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  chapters      Chapter[]
+}
+
+model Chapter {
+  id           String   @id @default(uuid())
+  conventionId String
+  code         String
+  title        String
+  description  String?
+  sortOrder    Int      @default(0)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  convention   Convention   @relation(fields: [conventionId], references: [id], onDelete: Cascade)
+  regulations  Regulation[]
+
+  @@unique([conventionId, code])
+}
+
+model Regulation {
+  id            String    @id @default(uuid())
+  chapterId     String
+  categoryId    String
+  code          String
+  title         String
+  summary       String?
+  content       String
+  keyPoints     String?   // JSON array of key points
+  applicableTo  String?
+  sortOrder     Int       @default(0)
+  lastAmended   DateTime?
+  effectiveDate DateTime?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  chapter       Chapter            @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  category      RegulationCategory @relation(fields: [categoryId], references: [id])
+
+  relatedFrom   RegulationCrossRef[] @relation("RegulationFrom")
+  relatedTo     RegulationCrossRef[] @relation("RegulationTo")
+
+  @@unique([chapterId, code])
+  @@index([categoryId])
+}
+
+model RegulationCrossRef {
+  id               String   @id @default(uuid())
+  fromRegulationId String
+  toRegulationId   String
+  relationshipType String   @default("related") // related, supersedes, implements, clarifies
+  notes            String?
+
+  createdAt        DateTime @default(now())
+
+  fromRegulation   Regulation @relation("RegulationFrom", fields: [fromRegulationId], references: [id], onDelete: Cascade)
+  toRegulation     Regulation @relation("RegulationTo", fields: [toRegulationId], references: [id], onDelete: Cascade)
+
+  @@unique([fromRegulationId, toRegulationId])
+}
